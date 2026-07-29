@@ -34,7 +34,7 @@ export default {
       if (!MODEL_ALLOWLIST.includes(body.model)) {
         return json({ error: { message: "model not allowed" } }, 400, cors);
       }
-      body.max_tokens = Math.min(body.max_tokens || 1000, 1000);
+      body.max_tokens = Math.min(body.max_tokens || 1000, 2000);
 
       const upstream = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",

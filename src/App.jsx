@@ -568,14 +568,13 @@ const Visuals = {
 
 /* ---------- AI 호출 ----------
    기본값은 Claude 아티팩트 환경용 직접 호출.
-   GitHub Pages 등 외부 배포 시에는 .env 에 VITE_AGON_API_URL 을 설정해
-   Cloudflare Worker 프록시(worker/ 폴더 참고)를 거치게 하세요.
+   외부 배포 시 .env 의 VITE_AGON_API_URL 로 Cloudflare Worker 프록시를 거치게 하세요.
 ------------------------------------------------------------------ */
 const API_URL =
   (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_AGON_API_URL) ||
   "https://api.anthropic.com/v1/messages";
 
-async function callJudge(promptText) {
+async function callJudge(promptText, maxTokens = 1000) {
   let lastErr = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -584,7 +583,7 @@ async function callJudge(promptText) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
-          max_tokens: 1000,
+          max_tokens: maxTokens,
           messages: [{ role: "user", content: promptText }],
         }),
       });
@@ -2706,6 +2705,53 @@ function trialPrompt(trial, pick, answer) {
 {"verdictKo":"판결에 대한 코멘트 2~3문장. 존댓말. 위트. 반대편이 뭐라고 받아칠지 한 줄 포함.","verdictEn":"영어로 같은 내용"}`;
 }
 
+/* ================= 평의회(Council) — 고민을 철학자들에게 ================= */
+// AI가 참고할 철학자 요약 카탈로그. 무기·명언·성향은 전부 하드코딩 데이터에서만 가져온다.
+function rosterDigest() {
+  return ALL_IDS.map((id) => {
+    const p = P[id];
+    return `${id} | ${p.nameKo}(${p.nameEn}) | ${ERA_NAME[p.era].ko} | ${p.school.ko} | 무기:${p.weapon.ko.slice(0, 60)} | 명언:"${p.quote.ko}"`;
+  }).join("\n");
+}
+
+function councilPrompt(worry) {
+  return `너는 철학 학습 앱 AGON의 해설 AI다. 사용자가 인생의 고민을 털어놓았다. 아래 철학자 목록에서 이 고민에 가장 날카롭게 대립하는 두 명을 고르고, 제3의 시선 한 명을 더해 세 관점을 제시하라.
+
+## 절대 규칙 (위반하면 앱이 무너진다)
+- 목록에 없는 철학자를 부르지 마라.
+- 명언은 목록에 실린 그 철학자의 명언만 인용하라. 명언을 새로 지어내지 마라. 인용이 애매하면 명언 없이 개념만 써라.
+- 각 철학자의 '무기(개념)'를 이 고민에 적용하는 방식으로 써라. 그 철학자가 실제로 하지 않은 주장을 만들지 마라.
+- **직접 조언 금지.** "헤어져라 / 참아라 / 그만둬라" 같은 판단을 대신 내리지 마라. 어떤 렌즈로 이 상황을 볼 수 있는지 관점만 제시하고, 판단은 사용자에게 남겨라.
+- 위로하되 가르치려 들지 마라. 각 철학자의 목소리 톤을 살려라(니체는 도발적으로, 스토아는 담담하게).
+
+## 고민을 안전하게 다루기
+자해·자살·타해 위험이 감지되면 관점 놀이를 멈추고, verdictKo/En 대신 안전 안내로 응답하라(아래 스키마의 safety 필드 사용). 그 외의 일상적 고민이면 정상 진행하라.
+
+## 철학자 목록
+${rosterDigest()}
+
+## 사용자의 고민
+${worry}
+
+## 출력
+다른 텍스트 없이 JSON 객체 하나만. 마크다운 코드블록 금지:
+{
+  "reframeKo": "고민을 철학적 질문 한 문장으로 다시 던진 것. 존댓말.",
+  "reframeEn": "영어로 같은 것",
+  "clashKo": "고른 두 철학자가 이 고민을 놓고 어떻게 갈라서는지 2~3문장. 대립의 핵심.",
+  "clashEn": "영어로 같은 것",
+  "voices": [
+    {"id":"철학자id","angleKo":"그의 무기로 이 고민을 본 관점 3~4문장. 존댓말. 명언은 목록의 것만.","angleEn":"영어로 같은 것"},
+    {"id":"철학자id","angleKo":"...","angleEn":"..."},
+    {"id":"철학자id(제3의 시선)","angleKo":"...","angleEn":"..."}
+  ],
+  "questionKo": "사용자가 스스로 답해볼 질문 한 문장.",
+  "questionEn": "영어로 같은 것",
+  "safety": null
+}
+위험 신호가 있으면 voices를 빈 배열로 두고 safety에 {"ko":"...따뜻한 안내와 전문가·상담 연결 권유...","en":"..."} 를 채워라.`;
+}
+
 /* ================= UI 조각 ================= */
 function Eyebrow({ children, color }) {
   return (
@@ -3223,6 +3269,164 @@ function Standings({ lang, userAxes, count, onOpen }) {
   );
 }
 
+/* ================= 평의회(Council) ================= */
+function axisDistance(a, b) {
+  const keys = ["reasonVsWill", "selfVsCommunity", "absoluteVsRelative", "meaningVsAbsurd"];
+  const d = keys.reduce((s, k) => s + Math.abs((a[k] ?? 0) - (b[k] ?? 0)), 0) / keys.length;
+  return Math.max(0, Math.round(100 - d / 2));
+}
+
+const PROMPTS = [
+  { ko: "번아웃이 왔는데 그만둘 용기가 없어요", en: "I'm burned out but can't find the courage to quit" },
+  { ko: "친구의 성공이 부러우면서도 미워요", en: "I envy and resent a friend's success at the same time" },
+  { ko: "매일이 똑같고 의미가 없게 느껴져요", en: "Every day feels the same and meaningless" },
+  { ko: "관계를 끝내야 할지 계속해야 할지 모르겠어요", en: "I can't tell whether to end or keep a relationship" },
+];
+
+function Council({ lang, onOpen, userAxes, hasAxes, history, onSave }) {
+  const [worry, setWorry] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [err, setErr] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const L = (o) => (o ? o[lang] || o.ko : "");
+
+  const submit = async (text) => {
+    const q = (text ?? worry).trim();
+    if (!q || loading) return;
+    if (text) setWorry(text);
+    setLoading(true); setErr(false); setResult(null);
+    try {
+      const r = await callJudge(councilPrompt(q), 1800);
+      setResult(r);
+      if (!r.safety) onSave({ q, result: r, at: Date.now() });
+    } catch (e) { setErr(true); } finally { setLoading(false); }
+  };
+
+  const reset = () => { setResult(null); setWorry(""); setErr(false); };
+
+  return (
+    <div className="pb-28">
+      <style>{`@keyframes cvin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){.cv-in{animation:none!important}}`}</style>
+      <div className="flex items-baseline justify-between mb-2">
+        <Eyebrow>{lang === "ko" ? "평의회 · The Council" : "The Council"}</Eyebrow>
+        {history.length > 0 && (
+          <button onClick={() => setShowHistory(!showHistory)} className="text-[10px] font-sans tracking-widest opacity-55 underline">
+            {lang === "ko" ? `기록 ${history.length}` : `Log ${history.length}`}
+          </button>
+        )}
+      </div>
+      <h1 className="text-3xl mb-3" style={{ fontFamily: "Georgia, serif" }}>
+        {lang === "ko" ? "고민을 데려오세요" : "Bring your worry"}
+      </h1>
+      <p className="text-[13px] opacity-55 leading-relaxed mb-6">
+        {lang === "ko"
+          ? "대립하는 두 철학자가 당신의 고민을 놓고 갈라섭니다. 답을 정해주지 않습니다 — 볼 수 있는 렌즈를 건넬 뿐입니다."
+          : "Two opposed thinkers split over your worry. They won't decide for you — only hand you lenses to see through."}
+      </p>
+
+      {showHistory && history.length > 0 && (
+        <div className="mb-6 border-l-2 pl-4 space-y-3" style={{ borderColor: INK + "33" }}>
+          {history.slice().reverse().map((h, i) => (
+            <button key={i} onClick={() => { setResult(h.result); setWorry(h.q); setShowHistory(false); }} className="block text-left w-full">
+              <p className="text-[13px] truncate">{h.q}</p>
+              <p className="text-[10px] opacity-45 font-sans">{new Date(h.at).toLocaleDateString()}</p>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!result && (
+        <>
+          <textarea
+            value={worry}
+            onChange={(e) => setWorry(e.target.value)}
+            rows={4}
+            placeholder={lang === "ko" ? "무엇이 마음에 걸리나요? 솔직할수록 좋습니다." : "What's weighing on you? The more honest, the better."}
+            className="w-full p-3 text-sm bg-transparent border rounded-none focus:outline-none"
+            style={{ borderColor: INK + "44", color: INK }}
+          />
+          <div className="flex flex-wrap gap-2 mt-3">
+            {PROMPTS.map((p, i) => (
+              <button key={i} onClick={() => submit(p.ko === worry ? undefined : (lang === "ko" ? p.ko : p.en))}
+                className="text-[11px] font-sans border px-2.5 py-1 opacity-70" style={{ borderColor: INK + "33" }}>
+                {L(p)}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => submit()}
+            disabled={loading || !worry.trim()}
+            className="mt-4 px-5 py-2.5 text-sm font-sans tracking-widest disabled:opacity-30"
+            style={{ background: INK, color: PAPER }}
+          >
+            {loading ? (lang === "ko" ? "평의회 소집 중…" : "Convening…") : (lang === "ko" ? "평의회 열기" : "Convene")}
+          </button>
+          {err && <p className="text-xs mt-2 opacity-60">{lang === "ko" ? "실패했습니다. 잠시 후 다시 시도해 주세요." : "Failed. Try again shortly."}</p>}
+        </>
+      )}
+
+      {result && result.safety && (
+        <div className="border-l-2 pl-4 cv-in" style={{ borderColor: WILL, animation: "cvin .4s ease" }}>
+          <p className="text-[15px] leading-relaxed">{L(result.safety)}</p>
+          <button onClick={reset} className="mt-4 text-xs font-sans underline opacity-70">{lang === "ko" ? "돌아가기" : "Back"}</button>
+        </div>
+      )}
+
+      {result && !result.safety && (
+        <div className="space-y-8">
+          <div className="cv-in" style={{ animation: "cvin .4s ease" }}>
+            <Eyebrow>{lang === "ko" ? "다시 던진 질문" : "Reframed"}</Eyebrow>
+            <p className="text-xl leading-snug" style={{ fontFamily: "Georgia, 'Noto Serif KR', serif" }}>
+              {lang === "ko" ? result.reframeKo : result.reframeEn}
+            </p>
+          </div>
+
+          <div className="cv-in" style={{ animation: "cvin .4s ease .05s both" }}>
+            <Eyebrow color={INK}>AGON</Eyebrow>
+            <p className="text-[15px] leading-relaxed">{lang === "ko" ? result.clashKo : result.clashEn}</p>
+          </div>
+
+          <div className="space-y-6">
+            {(result.voices || []).map((v, i) => {
+              const ph = P[v.id];
+              if (!ph) return null;
+              const tint = sideColor(ph.side);
+              const near = hasAxes ? axisDistance(userAxes, ph.axes) : null;
+              return (
+                <div key={i} className="border-l-2 pl-4 cv-in" style={{ borderColor: tint, animation: `cvin .4s ease ${0.1 + i * 0.08}s both` }}>
+                  <div className="flex items-baseline justify-between mb-2">
+                    <button onClick={() => onOpen(ph.id)} className="font-sans text-sm font-semibold" style={{ color: tint }}>
+                      {lang === "ko" ? ph.nameKo : ph.nameEn}
+                      <span className="opacity-50 font-normal ml-1.5 text-xs">{lang === "ko" ? ph.school.ko : ph.school.en}</span>
+                    </button>
+                    {near !== null && (
+                      <span className="text-[10px] font-sans opacity-55">{lang === "ko" ? `나와 ${near}%` : `${near}% you`}</span>
+                    )}
+                  </div>
+                  <p className="text-[15px] leading-relaxed">{lang === "ko" ? v.angleKo : v.angleEn}</p>
+                  <button onClick={() => onOpen(ph.id)} className="text-[11px] font-sans underline opacity-60 mt-2">
+                    {lang === "ko" ? "카드 열기" : "Open card"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="cv-in" style={{ animation: "cvin .4s ease .4s both" }}>
+            <Eyebrow>{lang === "ko" ? "당신에게 남기는 질문" : "For you to answer"}</Eyebrow>
+            <p className="text-[15px] leading-relaxed font-medium">{lang === "ko" ? result.questionKo : result.questionEn}</p>
+          </div>
+
+          <button onClick={reset} className="text-xs font-sans tracking-widest px-4 py-2" style={{ background: INK, color: PAPER }}>
+            {lang === "ko" ? "다른 고민" : "Another worry"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ================= 앱 ================= */
 export default function App() {
   const [view, setView] = useState("home");
@@ -3231,6 +3435,7 @@ export default function App() {
   const [readSet, setReadSet] = useState(new Set());
   const [judgments, setJudgments] = useState({});
   const [trialSaved, setTrialSaved] = useState(null);
+  const [councilHistory, setCouncilHistory] = useState([]);
 
   const count = Object.keys(judgments).length;
   const userAxes = useMemo(() => {
@@ -3253,7 +3458,7 @@ export default function App() {
   const NavBtn = ({ v, ko, en }) => (
     <button
       onClick={() => setView(v)}
-      className="flex-1 py-3.5 text-[11px] tracking-[0.2em] font-sans"
+      className="flex-1 py-3.5 text-[10px] tracking-[0.12em] font-sans whitespace-nowrap"
       style={{ opacity: view === v || (v === "home" && view === "card") ? 1 : 0.4, fontWeight: view === v ? 700 : 400 }}
     >
       {lang === "ko" ? ko : en}
@@ -3285,6 +3490,16 @@ export default function App() {
             onJudged={(id, r) => setJudgments((j) => ({ ...j, [id]: r }))}
           />
         )}
+        {view === "council" && (
+          <Council
+            lang={lang}
+            onOpen={openCard}
+            userAxes={userAxes}
+            hasAxes={count > 0}
+            history={councilHistory}
+            onSave={(entry) => setCouncilHistory((h) => [...h, entry].slice(-12))}
+          />
+        )}
         {view === "arena" && <Arena lang={lang} onOpen={openCard} />}
         {view === "trial" && <Trial lang={lang} saved={trialSaved} onJudged={setTrialSaved} />}
         {view === "standings" && <Standings lang={lang} userAxes={userAxes} count={count} onOpen={openCard} />}
@@ -3292,10 +3507,11 @@ export default function App() {
 
       <nav className="fixed bottom-0 left-0 right-0" style={{ background: PAPER, borderTop: `1px solid ${INK}22` }}>
         <div className="max-w-md mx-auto flex">
-          <NavBtn v="home" ko="연표" en="TIMELINE" />
+          <NavBtn v="home" ko="연표" en="TIME" />
+          <NavBtn v="council" ko="평의회" en="COUNCIL" />
           <NavBtn v="arena" ko="아레나" en="ARENA" />
           <NavBtn v="trial" ko="재판" en="TRIAL" />
-          <NavBtn v="standings" ko="스탠딩" en="STANDING" />
+          <NavBtn v="standings" ko="스탠딩" en="STAND" />
         </div>
       </nav>
     </div>
