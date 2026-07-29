@@ -2676,6 +2676,60 @@ const TRIALS = [
       } },
     ],
   },
+  {
+    key: "freewill",
+    q: { ko: "자유의지는 존재하는가?", en: "Does free will exist?" },
+    args: [
+      { id: "spinoza", stance: { ko: "없다, 착각이다", en: "No — it's an illusion" }, arg: {
+        ko: "돌이 날아가며 '내가 원해서 난다'고 생각한다면 그것이 인간의 자유다. 모든 것엔 원인이 있다. 자유란 필연을 이해하는 것이지, 원인 없이 선택하는 능력이 아니다.",
+        en: "If a thrown stone could think, it would believe it flies because it wants to. That is human freedom. Everything has a cause. Freedom is understanding necessity, not choosing without cause.",
+      } },
+      { id: "sartre", stance: { ko: "자유형에 처해 있다", en: "Condemned to be free" }, arg: {
+        ko: "인간에게는 본질이 먼저 주어지지 않는다 — 실존이 본질에 앞선다. 핑계 댈 본성이 없으므로, 당신은 매 순간 스스로를 선택할 수밖에 없고 그 선택의 무게에서 도망칠 수 없다.",
+        en: "No essence is handed to you in advance — existence precedes essence. With no nature to blame, you cannot help choosing yourself at every moment, and cannot escape the weight of that choice.",
+      } },
+      { id: "buddha", stance: { ko: "질문이 틀렸다", en: "Wrong question" }, arg: {
+        ko: "'누가' 자유로운가를 묻기 전에, 그 '누가'부터가 조건들이 잠시 뭉친 흐름일 뿐 고정된 실체가 아니다(무아). 자유·부자유를 따질 고정된 자아가 애초에 없다.",
+        en: "Before asking who is free, ask whether that 'who' is anything but a temporary bundle of conditions (anattā, non-self). There is no fixed self for freedom or unfreedom to belong to.",
+      } },
+    ],
+  },
+  {
+    key: "suffering",
+    q: { ko: "고통 없는 삶이 더 나은 삶인가?", en: "Is a life without suffering a better life?" },
+    args: [
+      { id: "epicurus", stance: { ko: "그렇다, 그게 목표다", en: "Yes — that is the goal" }, arg: {
+        ko: "쾌락의 최대치는 자극의 축적이 아니라 고통과 동요의 부재(아타락시아)다. 헛된 두려움과 불필요한 욕망만 걷어내면, 고통 없는 상태 자체가 이미 좋은 삶이다.",
+        en: "The height of pleasure is not more stimulation but the absence of pain and disturbance (ataraxia). Strip away idle fears and needless desires, and painlessness itself is the good life.",
+      } },
+      { id: "schopenhauer", stance: { ko: "불가능하다, 욕망을 줄여라", en: "Impossible — shrink desire instead" }, arg: {
+        ko: "삶은 결핍에서 오는 의지의 끝없는 갈망이다. 하나를 채우면 권태가, 권태 뒤엔 새 결핍이 온다. 고통 없는 삶을 바라지 말고, 원하는 것 자체를 줄여라.",
+        en: "Life is the will's endless craving born of lack. Satisfy one want and boredom follows, then a new want. Don't hope for painlessness — shrink what you want in the first place.",
+      } },
+      { id: "nietzsche", stance: { ko: "아니다, 고통이 위대함을 만든다", en: "No — suffering makes greatness" }, arg: {
+        ko: "고통을 소독해 없앤 삶은 온실 속 화분이다. 나를 죽이지 못하는 것은 나를 강하게 만든다. 고통을 긍정하지 못하는 자는 삶 전체를 긍정할 수 없다 — 운명애(amor fati).",
+        en: "A life sterilized of pain is a potted plant in a greenhouse. What does not kill me makes me stronger. Whoever cannot affirm suffering cannot affirm life at all — amor fati.",
+      } },
+    ],
+  },
+  {
+    key: "tradition",
+    q: { ko: "전통은 지켜야 하는가, 극복해야 하는가?", en: "Should tradition be preserved, or overcome?" },
+    args: [
+      { id: "confucius", stance: { ko: "전통이 인간을 만든다", en: "Tradition makes us human" }, arg: {
+        ko: "예(禮)는 낡은 형식이 아니라 사람과 사람 사이를 인간답게 잇는 문법이다. 예를 버린 자유는 짐승의 자유일 뿐 — 전통을 익혀야 비로소 어질게(仁) 행동할 수 있다.",
+        en: "Ritual propriety (li) is not old formality but the grammar that binds people humanely. Freedom without li is a beast's freedom — only through tradition can one act with true benevolence (ren).",
+      } },
+      { id: "zhuangzi", stance: { ko: "고정된 규범이 도를 가둔다", en: "Fixed rules cage the Way" }, arg: {
+        ko: "물고기를 잡으면 통발은 잊어야 한다. 어제 옳았던 규범이 오늘도 옳으리란 법은 없다. 전통에 매인 마음은 변화하는 도(道)를 따라갈 수 없다.",
+        en: "Once you've caught the fish, forget the trap. What was right yesterday need not be right today. A mind bound to tradition cannot follow the ever-changing Way.",
+      } },
+      { id: "marx", stance: { ko: "누구의 전통인지부터 물어라", en: "Ask whose tradition first" }, arg: {
+        ko: "모든 죽은 세대의 전통은 산 자의 머리를 악몽처럼 짓누른다. '지켜야 할 전통'은 흔히 그 전통으로 이득 보는 계급의 이해관계다 — 신성함이 아니라 누가 득을 보는지 물어라.",
+        en: "The tradition of all dead generations weighs like a nightmare on the brain of the living. What's called sacred and worth keeping is often just whichever class benefits from it — ask who gains, not what's holy.",
+      } },
+    ],
+  },
 ];
 
 /* ================= AI 프롬프트 ================= */
@@ -3121,8 +3175,17 @@ function Arena({ lang, onOpen }) {
 }
 
 /* ================= 오늘의 재판 ================= */
+// "오늘의 재판" — 날짜가 바뀌면 큐레이션된 재판 풀(TRIALS) 안에서 다른 문항이 나온다.
+// 문항 텍스트는 계속 하드코딩 큐레이션이라 이 로테이션에는 추가 AI 비용이 들지 않는다.
+function todaysTrialIndex(len) {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 0);
+  const dayOfYear = Math.floor((now - startOfYear) / 86400000);
+  return dayOfYear % len;
+}
+
 function Trial({ lang, saved, onJudged }) {
-  const [ti, setTi] = useState(saved ? saved.ti : 0);
+  const [ti, setTi] = useState(saved ? saved.ti : todaysTrialIndex(TRIALS.length));
   const trial = TRIALS[ti];
   const savedForThis = saved && saved.ti === ti ? saved : null;
   const [pick, setPick] = useState(savedForThis ? savedForThis.pick : null);
