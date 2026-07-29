@@ -3175,17 +3175,17 @@ function Arena({ lang, onOpen }) {
 }
 
 /* ================= 오늘의 재판 ================= */
-// "오늘의 재판" — 날짜가 바뀌면 큐레이션된 재판 풀(TRIALS) 안에서 다른 문항이 나온다.
-// 문항 텍스트는 계속 하드코딩 큐레이션이라 이 로테이션에는 추가 AI 비용이 들지 않는다.
-function todaysTrialIndex(len) {
-  const now = new Date();
-  const startOfYear = new Date(now.getFullYear(), 0, 0);
-  const dayOfYear = Math.floor((now - startOfYear) / 86400000);
-  return dayOfYear % len;
+// 세션마다 큐레이션된 재판 풀(TRIALS)에서 무작위로 하나를 고른다. 문항 텍스트는
+// 계속 하드코딩 큐레이션이라 셔플에는 추가 AI 비용이 들지 않는다.
+function randomTrialIndex(len, exclude) {
+  if (len <= 1) return 0;
+  let i;
+  do { i = Math.floor(Math.random() * len); } while (i === exclude);
+  return i;
 }
 
 function Trial({ lang, saved, onJudged }) {
-  const [ti, setTi] = useState(saved ? saved.ti : todaysTrialIndex(TRIALS.length));
+  const [ti, setTi] = useState(() => (saved ? saved.ti : randomTrialIndex(TRIALS.length)));
   const trial = TRIALS[ti];
   const savedForThis = saved && saved.ti === ti ? saved : null;
   const [pick, setPick] = useState(savedForThis ? savedForThis.pick : null);
@@ -3216,13 +3216,18 @@ function Trial({ lang, saved, onJudged }) {
   return (
     <div className="pb-28">
       <Eyebrow>{lang === "ko" ? "오늘의 재판 · The Trial" : "The Trial"}</Eyebrow>
-      <div className="flex gap-2 mb-5">
-        {TRIALS.map((t, i) => (
-          <button key={t.key} onClick={() => switchTrial(i)} className="text-[10px] font-sans tracking-widest border px-2.5 py-1"
-            style={{ borderColor: i === ti ? INK : INK + "33", opacity: i === ti ? 1 : 0.5 }}>
-            {i + 1}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-2 mb-5">
+        <div className="flex gap-2">
+          {TRIALS.map((t, i) => (
+            <button key={t.key} onClick={() => switchTrial(i)} className="text-[10px] font-sans tracking-widest border px-2.5 py-1"
+              style={{ borderColor: i === ti ? INK : INK + "33", opacity: i === ti ? 1 : 0.5 }}>
+              {i + 1}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => switchTrial(randomTrialIndex(TRIALS.length, ti))} className="text-[10px] font-sans tracking-widest underline opacity-60">
+          {lang === "ko" ? "셔플" : "Shuffle"}
+        </button>
       </div>
       <h1 className="text-3xl mb-8" style={{ fontFamily: "Georgia, serif" }}>{trial.q[lang]}</h1>
 
