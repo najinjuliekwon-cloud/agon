@@ -2,16 +2,19 @@
  * AGON API 프록시 — Cloudflare Worker
  *
  * 브라우저에 API 키를 노출하지 않기 위한 중계 서버입니다.
- * 앱은 이 Worker로 요청을 보내고, Worker가 키를 붙여 Anthropic API로 전달합니다.
+ * 앱은 이 Worker로 요청을 보내고, Worker가 Google Gemini API를 호출해
+ * Anthropic Messages API와 같은 모양({content:[{type:"text",text:"..."}]})으로
+ * 변환해 돌려줍니다 — 프론트엔드 callJudge()는 이 응답 모양만 보므로 수정이 필요 없습니다.
  *
  * 배포:
  *   npx wrangler deploy
- *   npx wrangler secret put ANTHROPIC_API_KEY
+ *   npx wrangler secret put GEMINI_API_KEY
  *
+ * GEMINI_API_KEY 는 https://aistudio.google.com/apikey 에서 무료로 발급받습니다.
  * ALLOWED_ORIGIN 은 wrangler.toml 의 [vars] 에서 본인 GitHub Pages 주소로 바꾸세요.
  */
 
-const MODEL_ALLOWLIST = ["claude-sonnet-4-6"];
+const GEMINI_MODEL = "gemini-2.5-flash";
 
 export default {
   async fetch(request, env) {
@@ -29,25 +32,44 @@ export default {
 
     try {
       const body = await request.json();
-
-      // 남용 방지: 모델과 토큰 상한을 서버에서 고정
-      if (!MODEL_ALLOWLIST.includes(body.model)) {
-        return json({ error: { message: "model not allowed" } }, 400, cors);
+      // 프론트는 항상 단일 user 메시지 하나만 보낸다 (messages: [{role:"user", content: promptText}]).
+      const promptText = (body.messages || []).map((m) => m.content).join("\n");
+      if (!promptText) {
+        return json({ error: { message: "no prompt" } }, 400, cors);
       }
-      body.max_tokens = Math.min(body.max_tokens || 1000, 2000);
 
-      const upstream = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify(body),
-      });
+      // 남용 방지: 모델과 토큰 상한을 서버에서 고정 (클라이언트가 보낸 model은 무시)
+      const maxTokens = Math.min(body.max_tokens || 1000, 2000);
+
+      const upstream = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": env.GEMINI_API_KEY,
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: promptText }] }],
+            generationConfig: { maxOutputTokens: maxTokens },
+          }),
+        }
+      );
 
       const data = await upstream.json();
-      return json(data, upstream.status, cors);
+
+      if (!upstream.ok) {
+        const message = (data && data.error && data.error.message) || "gemini error";
+        return json({ error: { message } }, upstream.status, cors);
+      }
+
+      const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+      const text = parts.map((p) => p.text || "").join("\n");
+      if (!text) {
+        return json({ error: { message: "empty response from gemini" } }, 502, cors);
+      }
+
+      return json({ content: [{ type: "text", text }] }, 200, cors);
     } catch (e) {
       return json({ error: { message: String(e && e.message) } }, 500, cors);
     }
