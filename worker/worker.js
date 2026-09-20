@@ -14,7 +14,7 @@
  * ALLOWED_ORIGIN 은 wrangler.toml 의 [vars] 에서 본인 GitHub Pages 주소로 바꾸세요.
  */
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-3.6-flash";
 
 export default {
   async fetch(request, env) {
