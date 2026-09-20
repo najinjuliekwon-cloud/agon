@@ -51,7 +51,7 @@ export default {
           },
           body: JSON.stringify({
             contents: [{ parts: [{ text: promptText }] }],
-            generationConfig: { maxOutputTokens: maxTokens },
+            generationConfig: { maxOutputTokens: maxTokens, thinkingConfig: { thinkingBudget: 0 } },
           }),
         }
       );
