@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 /* ================= AGON — 철학 아곤 · STEP 2 =================
    52인 전원 탑재. 색은 오직 대립에만. 시간은 서체로 흐른다.
@@ -574,20 +574,27 @@ const API_URL =
   (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_AGON_API_URL) ||
   "https://api.anthropic.com/v1/messages";
 
+const JUDGE_TIMEOUT_MS = 25000;
+
 async function callJudge(promptText, maxTokens = 1000) {
   let lastErr = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 600 * 2 ** (attempt - 1)));
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), JUDGE_TIMEOUT_MS);
     try {
       const res = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: ctrl.signal,
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: maxTokens,
           messages: [{ role: "user", content: promptText }],
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${(data.error && data.error.message) || ""}`);
       if (data.error) throw new Error(data.error.message || "API error");
       const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
       const m = text.match(/\{[\s\S]*\}/);
@@ -595,9 +602,35 @@ async function callJudge(promptText, maxTokens = 1000) {
       return JSON.parse(m[0]);
     } catch (e) {
       lastErr = e;
+      // 4xx (bad origin, rate limit, oversized prompt) will not succeed on retry
+      if (/HTTP 4\d\d/.test(e.message)) break;
+    } finally {
+      clearTimeout(timer);
     }
   }
   throw lastErr;
+}
+
+/* ---------- 로컬 저장 ----------
+   읽음 / 판정 / 재판 / 평의회 기록이 새로고침 후에도 남도록 localStorage에 보관한다.
+   저장소가 막힌 환경(사생활 보호 모드, 아티팩트 샌드박스)에서는 메모리로만 동작한다.
+------------------------------------------------------------------ */
+const STORE_PREFIX = "agon:v1:";
+
+function usePersisted(key, initial, { encode = (v) => v, decode = (v) => v } = {}) {
+  const [value, setValue] = useState(() => {
+    try {
+      const raw = window.localStorage.getItem(STORE_PREFIX + key);
+      if (raw != null) return decode(JSON.parse(raw));
+    } catch (e) { /* storage unavailable or corrupted: fall through */ }
+    return typeof initial === "function" ? initial() : initial;
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORE_PREFIX + key, JSON.stringify(encode(value)));
+    } catch (e) { /* quota or blocked storage: keep in-memory only */ }
+  }, [key, value]);
+  return [value, setValue];
 }
 
 /* ================= 데이터 — 52인 전원 ================= */
@@ -2762,13 +2795,21 @@ function trialPrompt(trial, pick, answer) {
 /* ================= 평의회(Council) — 고민을 철학자들에게 ================= */
 // AI가 참고할 철학자 요약 카탈로그. 무기·명언·성향은 전부 하드코딩 데이터에서만 가져온다.
 function rosterDigest() {
-  return ALL_IDS.map((id) => {
+  const shuffled = [...ALL_IDS];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled.map((id) => {
     const p = P[id];
     return `${id} | ${p.nameKo}(${p.nameEn}) | ${ERA_NAME[p.era].ko} | ${p.school.ko} | 무기:${p.weapon.ko.slice(0, 60)} | 명언:"${p.quote.ko}"`;
   }).join("\n");
 }
 
-function councilPrompt(worry) {
+function councilPrompt(worry, recentIds = []) {
+  const avoidBlock = recentIds.length
+    ? `\n## 최근에 이미 등장한 철학자 (반복 지양)\n${recentIds.join(", ")}\n이 고민에 압도적으로 적합해서 대체 불가능한 경우가 아니라면, 위 철학자들은 이번엔 피하고 목록에서 다른 철학자를 우선적으로 고르세요.\n`
+    : "";
   return `너는 철학 학습 앱 AGON의 해설 AI다. 사용자가 인생의 고민을 털어놓았다. 아래 철학자 목록에서 이 고민에 가장 날카롭게 대립하는 두 명을 고르고, 제3의 시선 한 명을 더해 세 관점을 제시하라.
 
 ## 절대 규칙 (위반하면 앱이 무너진다)
@@ -2783,7 +2824,7 @@ function councilPrompt(worry) {
 
 ## 철학자 목록
 ${rosterDigest()}
-
+${avoidBlock}
 ## 사용자의 고민
 ${worry}
 
@@ -3098,8 +3139,8 @@ function Arena({ lang, onOpen }) {
   const [quiz, setQuiz] = useState(() => makeQuiz());
   const [picked, setPicked] = useState(null);
   const [streak, setStreak] = useState(0);
-  const [best, setBest] = useState(0);
-  const [count, setCount] = useState(0);
+  const [best, setBest] = usePersisted("arenaBest", 0);
+  const [count, setCount] = usePersisted("arenaCount", 0);
   const ph = P[quiz.answerId];
   const correct = picked === quiz.answerId;
 
@@ -3359,13 +3400,18 @@ function Council({ lang, onOpen, userAxes, hasAxes, history, onSave }) {
   const [showHistory, setShowHistory] = useState(false);
   const L = (o) => (o ? o[lang] || o.ko : "");
 
+  const recentIds = useMemo(
+    () => [...new Set(history.slice(-8).flatMap((h) => (h.result?.voices || []).map((v) => v.id)))],
+    [history]
+  );
+
   const submit = async (text) => {
     const q = (text ?? worry).trim();
     if (!q || loading) return;
     if (text) setWorry(text);
     setLoading(true); setErr(false); setResult(null);
     try {
-      const r = await callJudge(councilPrompt(q), 1800);
+      const r = await callJudge(councilPrompt(q, recentIds), 1800);
       setResult(r);
       if (!r.safety) onSave({ q, result: r, at: Date.now() });
     } catch (e) { setErr(true); } finally { setLoading(false); }
@@ -3499,11 +3545,14 @@ function Council({ lang, onOpen, userAxes, hasAxes, history, onSave }) {
 export default function App() {
   const [view, setView] = useState("home");
   const [current, setCurrent] = useState(null);
-  const [lang, setLang] = useState("ko");
-  const [readSet, setReadSet] = useState(new Set());
-  const [judgments, setJudgments] = useState({});
-  const [trialSaved, setTrialSaved] = useState(null);
-  const [councilHistory, setCouncilHistory] = useState([]);
+  const [lang, setLang] = usePersisted("lang", "ko");
+  const [readSet, setReadSet] = usePersisted("read", () => new Set(), {
+    encode: (s) => [...s],
+    decode: (a) => new Set(Array.isArray(a) ? a.filter((id) => P[id]) : []),
+  });
+  const [judgments, setJudgments] = usePersisted("judgments", {});
+  const [trialSaved, setTrialSaved] = useState(null); // session-only: Trial picks a fresh case per visit
+  const [councilHistory, setCouncilHistory] = usePersisted("council", []);
 
   const count = Object.keys(judgments).length;
   const userAxes = useMemo(() => {

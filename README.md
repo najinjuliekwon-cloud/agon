@@ -25,6 +25,8 @@
 | 아곤 | 같은 질문에 다른 답을 한 라이벌과의 충돌 |
 | 네 차례 | 딜레마에 답하면 AI가 성향을 판정 |
 
+**평의회** — 고민을 털어놓으면 철학자 3인이 서로 다른 시선으로 답한다. AI는 목록에 있는 철학자와 그들의 하드코딩된 명언·무기만 쓰도록 제약되며, 직접 조언은 하지 않고 관점만 제시한다.
+
 **아레나** — "이 한 방, 누구?" 명언 3지선다. 오답 후보는 같은 시대에서 추출. 연승 스트릭 기록.
 
 **오늘의 재판** — 거짓말 / 소수 희생 / 일의 의미. 철학자 3인이 변론하고 사용자가 판결.
@@ -74,12 +76,13 @@ npm run dev
 
 ## 판정 기능에 관하여 (중요)
 
-앱의 AI 판정은 Anthropic API를 호출한다. 환경에 따라 설정이 다르다.
+앱의 AI 판정(카드·재판·평의회)은 Cloudflare Worker 프록시를 거쳐 Google Gemini API를 호출한다.
+프론트는 `VITE_AGON_API_URL`로 지정된 Worker 주소만 안다. 환경에 따라 설정이 다르다.
 
 | 환경 | 설정 | 판정 기능 |
 |---|---|---|
-| Claude 아티팩트 | 없음 (기본값) | 작동 |
 | 로컬 / GitHub Pages | `VITE_AGON_API_URL` 필요 | 프록시 배포 후 작동 |
+| Claude 아티팩트 | 없음 (기본값, Anthropic API 직접 호출) | 작동 |
 
 **브라우저 코드에 API 키를 직접 넣지 말 것.** 공개 저장소든 아니든,
 빌드된 JS는 누구나 열어볼 수 있다. `worker/` 폴더에 Cloudflare Worker 프록시를 넣어두었다.
@@ -87,7 +90,7 @@ npm run dev
 ```bash
 cd worker
 npx wrangler deploy
-npx wrangler secret put ANTHROPIC_API_KEY   # 여기서 키 입력
+npx wrangler secret put GEMINI_API_KEY   # 여기서 키 입력
 ```
 
 배포되면 나오는 주소(`https://agon-proxy.xxx.workers.dev`)를 `.env`에 넣는다.
@@ -97,8 +100,19 @@ cp .env.example .env
 # VITE_AGON_API_URL=https://agon-proxy.xxx.workers.dev
 ```
 
-`wrangler.toml`의 `ALLOWED_ORIGIN`을 본인 도메인으로 바꾸면 다른 사이트에서
-이 프록시를 무단으로 쓰는 것을 막을 수 있다. Worker는 모델과 토큰 상한도 서버에서 고정한다.
+### Worker 보안 설정
+
+- `wrangler.toml`의 `ALLOWED_ORIGIN`에는 **배포 사이트의 origin 하나**를 넣는다. 비어 있거나 `*`이면 Worker가 요청을 거부한다.
+- Worker는 `Origin` 헤더가 일치하지 않는 요청(curl 등)을 403으로 막고, 프롬프트 길이(20,000자)와 토큰 상한을 서버에서 고정한다.
+- IP당 분당 20회 제한은 Worker 인스턴스 단위의 **최선 노력** 방식이다. 확실한 제한이 필요하면
+  Cloudflare Rate Limiting 바인딩을 `RATE_LIMITER`라는 이름으로 추가하면 자동으로 그것을 쓴다.
+- 로컬에서 판정을 시험하려면 `worker/.dev.vars`에 `ALLOWED_ORIGIN=http://localhost:5173`, `GEMINI_API_KEY=...`를 적고
+  `npx wrangler dev`로 띄운 뒤 그 주소를 `.env`에 넣는다. (`.dev.vars`는 커밋하지 않는다)
+
+### 저장되는 데이터
+
+읽은 카드, 판정 결과, 평의회 기록, 아레나 최고 기록, 언어 설정은 브라우저 `localStorage`(`agon:v1:*`)에만 저장된다.
+서버로 전송되지 않으며, 브라우저 데이터를 지우면 초기화된다. 오늘의 재판은 방문마다 새로 뽑으므로 저장하지 않는다.
 
 판정 기능 없이도 카드·아레나·재판 변론은 전부 정상 작동한다.
 
